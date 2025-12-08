@@ -1,0 +1,11 @@
+basePath: /
+info:
+  contact: {}
+  description: Simple HTTP JSON API for navigating a local knowledge base (Markdown/Org/TXT).
+  title: KBNav API
+  version: "1.0"
+paths: {}
+securityDefinitions:
+  BasicAuth:
+    type: basic
+swagger: "2.0"
