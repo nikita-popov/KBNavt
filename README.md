@@ -122,4 +122,4 @@ We intentionally separated the Core API and the MCP Server.
 
 ## License
 
-MIT License. See [LICENSE](LICENSE.md) for details.
+MIT License. See [LICENSE](LICENSE) for details.
