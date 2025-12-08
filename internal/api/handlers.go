@@ -48,6 +48,10 @@ func (h *Handler) SearchFiles(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "missing query parameter 'q'"})
 		return
 	}
+	if err := validateQuery(query); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err})
+		return
+	}
 
 	results := make([]models.SearchResult, 0)
 
@@ -95,17 +99,18 @@ func (h *Handler) ReadFile(c *gin.Context) {
 		return
 	}
 
-	fullPath := filepath.Join(h.DataDir, targetPath)
+	if err := validateQuery(targetPath); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err})
+		return
+	}
 
-	// Path traversal protection
-	dataDirClean := filepath.Clean(h.DataDir)
-	fullClean := filepath.Clean(fullPath)
-	if !strings.HasPrefix(fullClean, dataDirClean) {
+	path, err := validatePath(h.DataDir, targetPath)
+	if err != nil {
 		c.JSON(http.StatusForbidden, gin.H{"error": "access denied"})
 		return
 	}
 
-	content, err := os.ReadFile(fullClean)
+	content, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "file not found"})
