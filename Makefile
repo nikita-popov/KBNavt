@@ -1,30 +1,26 @@
-.PHONY: build build-api build-mcp run test clean deps swagger
+.PHONY: build mk-bin-dir build-api build-cli build-mcp deps clean fmt vet test check setup init
 
+build: mk-bin-dir build-api build-cli build-mcp
 
-build: build-api build-cli build-mcp
+mk-bin-dir:
+	@mkdir -p bin
 
 build-api:
-	go build -o kbnavt-api cmd/api/main.go
+	go build -o bin/kbnavt-api cmd/api/main.go
 
 build-cli:
-	go build -o kbnavt-cli cmd/cli/main.go
+	go build -o bin/kbnavt-cli cmd/cli/main.go
 
 build-mcp:
-	go build -o kbnavt-mcp cmd/mcp/main.go
+	go build -o bin/kbnavt-mcp cmd/mcp/main.go
 
 deps:
 	go mod download
 	go mod tidy
 
-swagger:
-	swag init -d cmd/api/
-
 clean:
 	go clean
-	rm -f kbnavt-api rbnavt-mcp
-
-install-tools:
-	go install github.com/swaggo/swag/cmd/swag@latest
+	@rm -rf bin
 
 fmt:
 	go fmt ./...
@@ -42,5 +38,5 @@ check: fmt vet test
 setup:
 	mkdir -p data
 
-init: deps install-tools swagger setup
+init: deps setup
 	@echo "Project inited!"
