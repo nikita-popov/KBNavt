@@ -1,122 +1,93 @@
 package main
 
 import (
-	"context"
-	"encoding/base64"
-	"encoding/json"
-	"fmt"
-	"log"
-	"net/http"
-	"os"
-	"time"
+    "bufio"
+    "context"
+    "encoding/json"
+    "flag"
+    "fmt"
+    "log/slog"
+    "os"
 
-	"github.com/mark3labs/mcp-go/mcp"
-	"github.com/mark3labs/mcp-go/server"
-
-	"kbnavt/internal/config"
-	"kbnavt/internal/models"
+    "kbnavt/internal/config"
+    "kbnavt/internal/mcp"
+    "kbnavt/pkg/kb"
 )
 
-type APIClient struct {
-	BaseURL  string
-	Username string
-	Password string
-	Client   *http.Client
-}
-
-func (c *APIClient) Request(endpoint string) (*http.Response, error) {
-	req, err := http.NewRequest("GET", c.BaseURL+endpoint, nil)
-	if err != nil {
-		return nil, err
-	}
-	auth := base64.StdEncoding.EncodeToString([]byte(c.Username + ":" + c.Password))
-	req.Header.Add("Authorization", "Basic "+auth)
-	return c.Client.Do(req)
-}
-
 func main() {
-	cfg, err := config.Load("config.ini")
-	if err != nil {
-		log.Fatal(err)
-	}
+    configPath := flag.String("config", "", "Path to config file")
+    flag.Parse()
 
-	apiClient := &APIClient{
-		BaseURL:  cfg.MCP.ApiURL,
-		Username: cfg.Server.Username,
-		Password: cfg.Server.Password,
-		Client:   &http.Client{Timeout: 10 * time.Second},
-	}
+    // Load configuration
+    cfg, err := config.Load(*configPath)
+    if err != nil {
+        fmt.Fprintf(os.Stderr, "Failed to load config: %v\n", err)
+        os.Exit(1)
+    }
 
-	s := server.NewMCPServer(
-		"KBNav Wrapper",
-		"1.0.0",
-	)
+    // Setup logging
+    logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
+        Level: parseLogLevel(cfg.Logging.Level),
+    }))
 
-	s.AddTool(mcp.NewTool("search_files",
-		mcp.WithDescription("Search for files in the knowledge base by name"),
-		mcp.WithString("query", mcp.Required(), mcp.Description("Search query string")),
-	), func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		argsMap, ok := request.Params.Arguments.(map[string]interface{})
-		if !ok {
-			return mcp.NewToolResultError("Invalid arguments type"), nil
-		}
-		query, ok := argsMap["query"].(string)
-		if !ok {
-			return mcp.NewToolResultError("Missing or invalid 'query' parameter"), nil
-		}
-		resp, err := apiClient.Request(fmt.Sprintf("/search?q=%s", query))
-		if err != nil {
-			return mcp.NewToolResultError(fmt.Sprintf("API error: %v", err)), nil
-		}
-		defer resp.Body.Close()
+    // Initialize navigator
+    navigator, err := kb.NewNavigator(cfg.KB.BaseDir, logger)
+    if err != nil {
+        logger.Error("Failed to initialize navigator", "error", err)
+        os.Exit(1)
+    }
 
-		var results []models.SearchResult
-		if err := json.NewDecoder(resp.Body).Decode(&results); err != nil {
-			return mcp.NewToolResultError("Failed to decode response"), nil
-		}
+    // Create MCP server
+    mcpServer := mcp.NewMCPServer(navigator, logger)
 
-		jsonResult, _ := json.Marshal(results)
-		return mcp.NewToolResultText(string(jsonResult)), nil
-	})
+    logger.Info("KBNavt MCP Server started", "transport", cfg.MCP.Transport)
 
-	s.AddTool(mcp.NewTool("read_file",
-		mcp.WithDescription("Read content of a specific file"),
-		mcp.WithString("path", mcp.Required(), mcp.Description("Relative path to file")),
-	), func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		argsMap, ok := request.Params.Arguments.(map[string]interface{})
-		if !ok {
-			return mcp.NewToolResultError("Invalid arguments type"), nil
-		}
-		path, ok := argsMap["path"].(string)
-		if !ok {
-			return mcp.NewToolResultError("Missing or invalid 'path' parameter"), nil
-		}
-		resp, err := apiClient.Request(fmt.Sprintf("/read?path=%s", path))
-		if err != nil {
-			return mcp.NewToolResultError(fmt.Sprintf("API error: %v", err)), nil
-		}
-		defer resp.Body.Close()
+    // Run MCP server via stdio
+    runStdioServer(mcpServer, logger)
+}
 
-		if resp.StatusCode != 200 {
-			return mcp.NewToolResultError("File not found or access denied"), nil
-		}
+func runStdioServer(mcpServer *mcp.MCPServer, logger *slog.Logger) {
+    scanner := bufio.NewScanner(os.Stdin)
 
-		var content models.FileContent
-		if err := json.NewDecoder(resp.Body).Decode(&content); err != nil {
-			return mcp.NewToolResultError("Failed to decode response"), nil
-		}
+    for scanner.Scan() {
+        line := scanner.Bytes()
 
-		return mcp.NewToolResultText(fmt.Sprintf("File: %s\n\n%s", content.Path, content.Content)), nil
-	})
+        // Handle JSON-RPC request
+        response, err := mcpServer.HandleRequest(context.Background(), line)
 
-	if cfg.MCP.Mode == "sse" {
-		fmt.Fprintf(os.Stderr, "Starting MCP SSE server on :%s", cfg.MCP.Addr)
-		sseServer := server.NewSSEServer(s)
-		log.Fatal(sseServer.Start(":" + cfg.MCP.Addr))
-	} else {
-		fmt.Fprintf(os.Stderr, "Starting MCP Stdio server")
-		if err := server.ServeStdio(s); err != nil {
-			log.Fatal(err)
-		}
-	}
+        var respBytes []byte
+        if err != nil {
+            respBytes, _ = json.Marshal(map[string]interface{}{
+                "error": map[string]interface{}{
+                    "code":    -32603,
+                    "message": err.Error(),
+                },
+            })
+        } else {
+            respBytes, _ = json.Marshal(map[string]interface{}{
+                "result": response,
+            })
+        }
+
+        fmt.Println(string(respBytes))
+    }
+
+    if err := scanner.Err(); err != nil {
+        logger.Error("Scanner error", "error", err)
+    }
+}
+
+func parseLogLevel(level string) slog.Level {
+    switch level {
+    case "debug":
+        return slog.LevelDebug
+    case "info":
+        return slog.LevelInfo
+    case "warn":
+        return slog.LevelWarn
+    case "error":
+        return slog.LevelError
+    default:
+        return slog.LevelInfo
+    }
 }

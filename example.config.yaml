@@ -1,0 +1,15 @@
+kb:
+  base_dir: ~/Documents/kb
+  max_size: 10485760  # 10MB
+
+api:
+  host: localhost
+  port: 8080
+  auth_user: admin
+  auth_pass: changeme
+
+mcp:
+  transport: stdio  # or "sse"
+
+logging:
+  level: info  # debug, info, warn, error

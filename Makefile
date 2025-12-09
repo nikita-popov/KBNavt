@@ -1,10 +1,13 @@
 .PHONY: build build-api build-mcp run test clean deps swagger
 
 
-build: build-api build-mcp
+build: build-api build-cli build-mcp
 
 build-api:
 	go build -o kbnavt-api cmd/api/main.go
+
+build-cli:
+	go build -o kbnavt-cli cmd/cli/main.go
 
 build-mcp:
 	go build -o kbnavt-mcp cmd/mcp/main.go
