@@ -1,19 +1,38 @@
-# KBNavt
+# Lightweight KB Navigator & MCP Bridge
 
-Knowledge Base Navigator is a lightweight bridge between your local knowledge base (Markdown, Org-mode, TXT files) and Large Language Models (LLMs).
-
-It consists of two main components:
-
-1. **Core API**: A simple HTTP JSON API that indexes and serves your local files with Basic Auth protection.
-2. **MCP Server**: An adapter implementing the Model Context Protocol (stdio/SSE), allowing AI assistants like Claude or ChatGPT to "navigate" and read your notes via the Core API.
+A lightweight, high-performance knowledge base navigator with Model Context Protocol (MCP) support. Access your Org-mode, Markdown, and text files through HTTP API or directly integrate with LLMs via MCP.
 
 ## Features
 
-- **Format Agnostic**: Works with .md, .org, and .txt files.
-- **Secure**: The Core API is protected by Basic Auth; the MCP server acts as a client.
-- **Dual Mode MCP**: Supports both stdio (for local desktop apps like Claude Desktop) and sse (Server-Sent Events for remote connections).
-- **Configurable**: Simple INI configuration for ports, paths, and credentials.
-- **Test Coverage**: Includes unit tests for critical paths.
+## Features
+
+✨ **Multi-Format Support**
+- Org-mode (`.org`) with full header parsing
+- Markdown (`.md`) with semantic structure
+- Plain text (`.txt`)
+
+🔍 **Smart Search**
+- Full-text search across all documents
+- Relevance scoring
+- Snippet extraction
+
+🔐 **Security First**
+- Path traversal protection
+- Sandboxed file access
+- Basic Authentication for API
+- Configurable access roots
+
+🤖 **MCP Integration**
+- Native Model Context Protocol support
+- Resources: `kb://documents/...` URIs
+- Tools: `list_documents`, `read_document`, `read_section`, `search_documents`
+- Prompts: Pre-built templates for common tasks
+
+🏗️ **Clean Architecture**
+- Unified core library (`pkg/kb`)
+- Dual interface: HTTP API + MCP server
+- Configurable deployment modes
+- Structured logging with slog
 
 ## Getting Started
 
@@ -39,86 +58,167 @@ make
 
 3. Configure the application:
 
-Create a `config.ini` file in the root directory (see [Configuration](#configuration)).
+Create a `config.yaml` file in the root directory (see [Configuration](#configuration)).
 
 ### Configuration
 
-Create a `config.ini` file:
+Create a `config.yaml` file:
 
-```ini
-[server]
-addr = :8080
-# Absolute or relative path to your notes directory
-data_dir = ./my_notes
-username = admin
-password = your_secure_password
+```yaml
+kb:
+  base_dir: ~/Documents/kb
+  max_size: 10485760  # 10MB
 
-[mcp]
-# URL where the Core API is running
-api_url = http://localhost:8080
-# Mode: "stdio" (for Claude Desktop) or "sse"
-mode = stdio
-addr = :3001
+api:
+  host: localhost
+  port: 8080
+  auth_user: admin
+  auth_pass: changeme
+
+mcp:
+  transport: stdio  # stdio or sse
+
+logging:
+  level: info  # debug, info, warn, error
+```
+
+Or use environment variables with KB_ prefix:
+
+```bash
+export KB_KB_BASE_DIR=~/my-kb
+export KB_LOGGING_LEVEL=debug
 ```
 
 ### Usage
 
-1. Start the Core API
-
-This service must be running for the MCP server to work.
+#### HTTP API Server
 
 ```bash
-./kbnavt-api
+./bin/kbnavt-api -config config.yaml
 ```
 
-The API will start at http://localhost:8080.
+API endpoints:
 
-2. Connect to an LLM (Claude Desktop)
+```bash
+# Health check
+curl http://localhost:8080/health
 
-To use KBNavt with the Claude Desktop App, add the following to your `claude_desktop_config.json`:
+# List documents
+curl -u admin:changeme http://localhost:8080/documents
+
+# Read document
+curl -u admin:changeme http://localhost:8080/documents/2025/notes.org
+
+# Read specific section
+curl -u admin:changeme "http://localhost:8080/documents/2025/notes.org/section/Today"
+
+# Search
+curl -u admin:changeme "http://localhost:8080/search?q=golang&limit=10"
+
+# List resources
+curl -u admin:changeme http://localhost:8080/resources
+```
+
+#### MCP Server (Embedded)
+
+```bash
+./bin/kbnavt-mcp -config config.yaml
+```
+
+Configure in Claude Desktop (`~/.config/Claude/claude_desktop_config.json`):
 
 ```json
 {
   "mcpServers": {
     "kbnavt": {
-      "command": "go",
-      "args": ["run", "cmd/mcp/main.go"],
-      "env": {
-        "KBNAVT_CONFIG_PATH": "/absolute/path/to/kbnavt/config.ini"
-      }
+      "command": "/path/to/kbnavt-mcp",
+      "args": ["-config=/path/to/config.yaml"]
     }
   }
 }
 ```
 
-Note: Ensure the args point to the correct path of the `cmd/mcp/main.go` file.
-
-3. Manual Testing via HTTP
-
-You can test the Core API directly using curl:
+#### Interactive CLI
 
 ```bash
-# Search for files containing "linux" in the filename
-curl -u admin:your_secure_password "http://localhost:8080/search?q=linux"
+# List all documents
+./bin/kbnavt list
 
-# Read a specific file
-curl -u admin:your_secure_password "http://localhost:8080/read?path=linux/commands.md"
+# Read document
+./bin/kbnavt read notes/2025/daily.org
+
+# Read section
+./bin/kbnavt read notes/2025/daily.org "Morning Review"
+
+# Search
+./bin/kbnavt search "golang patterns" 5
+
+# Interactive REPL
+./bin/kbnavt repl
 ```
 
-### Development
+## MCP Protocol
 
-#### Running Tests
+KBNavt implements the full Model Context Protocol with:
+
+### Resources
+
+Access your KB documents via URIs:
+
+```
+kb://documents/path/to/file.org
+kb://documents/2025/daily.md
+```
+
+LLM clients can list all available resources and read them without exposing filesystem paths.
+
+### Tools
+
+Available MCP tools:
+
+| Tool               | Description            | Parameters              |
+|--------------------|------------------------|-------------------------|
+| `list_documents`   | List all KB documents  | -                       |
+| `read_document`    | Read full document     | path (string)           |
+| `read_section`     | Read section by header | path, section           |
+| `search_documents` | Full-text search       | query, limit (optional) |
+
+### Prompts
+
+Pre-configured prompt templates:
+
+- `summarize_daily` - Summarize today's notes
+- `find_related` - Find notes about a topic
+
+### Security
+
+- Path Validation: All file paths are validated against allowed roots
+- Path Traversal Protection: Prevents ../ attacks
+- Sandboxing: Only configured KB directories are accessible
+- Authentication: Basic Auth for HTTP API
+- File Type Filtering: Only .org, .md, .txt files
+
+### Performance
+
+- Lazy loading: Documents read on demand
+- Streaming: Large documents handled efficiently
+- Caching: Headers cached per-document
+- Minimal dependencies: Only essential libraries
+
+## Development
+
+### Running Tests
 
 ```bash
+# Run tests
 make check
+
+# Build
+make build
+
+# Clean
+make clean
 ```
-
-#### Architecture Note
-
-We intentionally separated the Core API and the MCP Server.
-
-- Security: The Core API can be deployed on a remote server (VPS) behind a reverse proxy or VPN.
-- Flexibility: The MCP Server can run locally on your machine, connecting to the remote API securely. This allows you to use local LLM tools with a remote knowledge base.
 
 ## License
 
