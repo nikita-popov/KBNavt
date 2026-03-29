@@ -98,8 +98,8 @@ func (p *Parser) extractOrgHeaders(nodes []org.Node) []Header {
 	for _, node := range nodes {
 		if headline, ok := node.(*org.Headline); ok {
 			header := Header{
-				Level: headline.Lvl,
-				Title: orgNodesToString(headline.Title),
+				Level:   headline.Lvl,
+				Title:   orgNodesToString(headline.Title),
 				LineNum: headline.Index,
 			}
 
@@ -134,8 +134,8 @@ func (p *Parser) extractMarkdownHeaders(root ast.Node, content string) []Header 
 
 		// Detect markdown headers
 		if match := regexp.MustCompile(`^(#+)\s+(.*)$`).FindStringSubmatch(line); match != nil {
-			level := len(match)
-			title := match[0] // TODO: check
+			level := len(match[1])
+			title := match[2]
 
 			headers = append(headers, Header{
 				Level:   level,
@@ -150,32 +150,32 @@ func (p *Parser) extractMarkdownHeaders(root ast.Node, content string) []Header 
 
 // ReadSection reads a specific header section from a document
 func (p *Parser) ReadSection(content string, format Format, headerTitle string) (string, error) {
-    var headers []Header
+	var headers []Header
 
-    switch format {
-    case FormatOrg:
-        doc, err := p.ParseOrgMode(content)
-        if err != nil {
-            return "", err
-        }
-        headers = doc.Headers
-    case FormatMarkdown:
-        doc, err := p.ParseMarkdown(content)
-        if err != nil {
-            return "", err
-        }
-        headers = doc.Headers
-    default:
-        return content, nil
-    }
+	switch format {
+	case FormatOrg:
+		doc, err := p.ParseOrgMode(content)
+		if err != nil {
+			return "", err
+		}
+		headers = doc.Headers
+	case FormatMarkdown:
+		doc, err := p.ParseMarkdown(content)
+		if err != nil {
+			return "", err
+		}
+		headers = doc.Headers
+	default:
+		return content, nil
+	}
 
-    for _, h := range headers {
-        if strings.EqualFold(h.Title, headerTitle) {
-            return h.Content, nil
-        }
-    }
+	for _, h := range headers {
+		if strings.EqualFold(h.Title, headerTitle) {
+			return h.Content, nil
+		}
+	}
 
-    return "", fmt.Errorf("header not found: %s", headerTitle)
+	return "", fmt.Errorf("header not found: %s", headerTitle)
 }
 
 // Helper to convert Org nodes to string

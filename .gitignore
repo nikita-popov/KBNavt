@@ -1,6 +1,5 @@
-kbnavt-api
-kbnavt-cli
-kbnavt-mcp
+bin/
 
 *.out
 *.html
+config.yaml

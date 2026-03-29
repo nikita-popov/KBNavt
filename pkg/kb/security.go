@@ -50,10 +50,10 @@ func (sm *SecurityManager) ValidatePath(requestPath string) (string, error) {
 // IsAllowedFile checks if file extension is allowed
 func (sm *SecurityManager) IsAllowedFile(filename string) bool {
 	allowed := map[string]bool{
-		".org":  true,
-		".md":   true,
+		".org":      true,
+		".md":       true,
 		".markdown": true,
-		".txt":  true,
+		".txt":      true,
 	}
 
 	ext := strings.ToLower(filepath.Ext(filename))
