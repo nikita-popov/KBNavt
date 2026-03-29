@@ -238,13 +238,13 @@ func (s *MCPServer) handleCallTool(ctx context.Context, params interface{}) (int
 		if err != nil {
 			return nil, err
 		}
+		var lines []string
+		for _, d := range docs {
+			lines = append(lines, d.Path)
+		}
+		text := strings.Join(lines, "\n")
 		return map[string]interface{}{
-			"content": []map[string]interface{}{
-				{
-					"type": "text",
-					"text": fmt.Sprintf("Found %d documents", len(docs)),
-				},
-			},
+			"content": []map[string]interface{}{{"type": "text", "text": text}},
 		}, nil
 
 	case "read_document":

@@ -1,6 +1,7 @@
 package kb
 
 import (
+	"errors"
 	"fmt"
 	//"io/ioutil"
 	"log/slog"
@@ -12,7 +13,7 @@ import (
 
 // Navigator handles knowledge base operations
 type Navigator struct {
-	baseDir  string
+	rootPath  string
 	security *SecurityManager
 	parser   *Parser
 	search   *SearchEngine
@@ -20,27 +21,42 @@ type Navigator struct {
 }
 
 // NewNavigator creates a new navigator
-func NewNavigator(baseDir string, logger *slog.Logger) (*Navigator, error) {
-	// Validate base directory exists
-	if _, err := os.Stat(baseDir); os.IsNotExist(err) {
-		return nil, fmt.Errorf("base directory does not exist: %s", baseDir)
-	}
+func NewNavigator(rootPath string, logger *slog.Logger) (*Navigator, error) {
+	nav := &Navigator{rootPath: rootPath}
+    se, err := NewSearchEngine(filepath.Join(rootPath, ".search-index"), logger)
+    if err != nil {
+        return nil, fmt.Errorf("search engine init: %w", err)
+    }
+    nav.search = se
 
-	nav := &Navigator{
-		baseDir:  filepath.Clean(baseDir),
-		security: NewSecurityManager(filepath.Clean(baseDir)),
-		parser:   NewParser(),
-		logger:   logger,
-	}
+    docs, err := nav.ListDocuments()
+    if err != nil {
+        return nil, err
+    }
+    for _, doc := range docs {
+        content, err := os.ReadFile(filepath.Join(rootPath, doc.Path))
+        if err != nil {
+            continue
+        }
+        //_ = se.Index(doc.Path, string(content))
+		_ = se.IndexDocument(doc.Path, string(content))
+    }
 
-	return nav, nil
+    return nav, nil
+}
+
+func (n *Navigator) Close() error {
+    if n.search != nil {
+        return n.search.index.Close()
+    }
+    return nil
 }
 
 // ListDocuments returns all documents in the KB
 func (n *Navigator) ListDocuments() ([]Document, error) {
 	var documents []Document
 
-	err := filepath.Walk(n.baseDir, func(path string, info os.FileInfo, err error) error {
+	err := filepath.Walk(n.rootPath, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
@@ -49,7 +65,7 @@ func (n *Navigator) ListDocuments() ([]Document, error) {
 			return nil
 		}
 
-		relPath, _ := filepath.Rel(n.baseDir, path)
+		relPath, _ := filepath.Rel(n.rootPath, path)
 		format := detectFormat(info.Name())
 
 		doc := Document{
@@ -150,7 +166,7 @@ func (n *Navigator) ListResources() ([]Resource, error) {
 }
 
 // SearchDocuments performs keyword search
-func (n *Navigator) SearchDocuments(query string, limit int) ([]SearchResult, error) {
+/*func (n *Navigator) SearchDocuments(query string, limit int) ([]SearchResult, error) {
 	var results []SearchResult
 	docs, err := n.ListDocuments()
 	if err != nil {
@@ -180,6 +196,19 @@ func (n *Navigator) SearchDocuments(query string, limit int) ([]SearchResult, er
 	}
 
 	return results, nil
+    }*/
+/*func (n *Navigator) SearchDocuments(query string, limit int) ([]SearchResult, error) {
+	if n.search == nil {
+		return nil, errors.New("search engine not initialized")
+	}
+	return n.search.Search(query, limit)
+    }
+*/
+func (n *Navigator) SearchDocuments(query string, limit int) ([]*SearchResult, error) {
+    if n.search == nil {
+        return nil, errors.New("search engine not initialized")
+    }
+    return n.search.Search(query, limit)
 }
 
 func detectFormat(filename string) Format {

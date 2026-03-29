@@ -46,6 +46,7 @@ func main() {
 		logger.Error("Failed to initialize navigator", "error", err)
 		os.Exit(1)
 	}
+	defer navigator.Close()
 
 	// Create Echo app
 	e := echo.New()

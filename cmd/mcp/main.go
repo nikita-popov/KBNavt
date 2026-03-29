@@ -36,6 +36,7 @@ func main() {
 		logger.Error("Failed to initialize navigator", "error", err)
 		os.Exit(1)
 	}
+	defer navigator.Close()
 
 	// Create MCP server
 	mcpServer := mcp.NewMCPServer(navigator, logger)
@@ -48,9 +49,13 @@ func main() {
 
 func runStdioServer(mcpServer *mcp.MCPServer, logger *slog.Logger) {
 	scanner := bufio.NewScanner(os.Stdin)
-
 	for scanner.Scan() {
 		line := scanner.Bytes()
+
+		var raw struct {
+            ID interface{} `json:"id"`
+        }
+		json.Unmarshal(line, &raw)
 
 		// Handle JSON-RPC request
 		response, err := mcpServer.HandleRequest(context.Background(), line)
@@ -58,6 +63,8 @@ func runStdioServer(mcpServer *mcp.MCPServer, logger *slog.Logger) {
 		var respBytes []byte
 		if err != nil {
 			respBytes, _ = json.Marshal(map[string]interface{}{
+				"jsonrpc": "2.0",
+				"id":      raw.ID,
 				"error": map[string]interface{}{
 					"code":    -32603,
 					"message": err.Error(),
@@ -66,6 +73,7 @@ func runStdioServer(mcpServer *mcp.MCPServer, logger *slog.Logger) {
 		} else {
 			respBytes, _ = json.Marshal(map[string]interface{}{
 				"jsonrpc": "2.0",
+				"id":      raw.ID,
 				"result":  response,
 			})
 		}

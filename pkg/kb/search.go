@@ -38,7 +38,7 @@ func NewSearchEngine(indexPath string, logger *slog.Logger) (*SearchEngine, erro
 }
 
 // IndexDocument adds or updates a document in the index
-func (se *SearchEngine) IndexDocument(doc *Document) error {
+/*func (se *SearchEngine) IndexDocument(doc *Document) error {
 	err := se.index.Index(doc.Path, map[string]interface{}{
 		"title":   doc.Title,
 		"content": doc.Content,
@@ -50,6 +50,23 @@ func (se *SearchEngine) IndexDocument(doc *Document) error {
 		return err
 	}
 	return nil
+    }
+*/
+// search.go
+func (se *SearchEngine) IndexDocument(path, content string) error {
+    return se.index.Index(path, map[string]interface{}{
+        "content": content,
+        "path":    path,
+    })
+}
+
+// В search.go — добавить метод переиндексации одного файла
+func (se *SearchEngine) Reindex(path, content string) error {
+    // Bleve поддерживает upsert — повторный Index() обновляет документ
+    return se.index.Index(path, map[string]interface{}{
+        "content": content,
+        "path":    path,
+    })
 }
 
 // Search performs a full-text search

@@ -42,6 +42,7 @@ func main() {
 		logger.Error("Failed to initialize navigator", "error", err)
 		os.Exit(1)
 	}
+	defer navigator.Close()
 
 	command := args[0]
 	cmdArgs := args[1:]
